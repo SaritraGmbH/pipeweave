@@ -29,12 +29,41 @@ import { createOrchestrator } from "@pipeweave/orchestrator";
 
 const orchestrator = createOrchestrator({
   databaseUrl: process.env.DATABASE_URL,
-  s3: {
-    endpoint: process.env.S3_ENDPOINT,
-    bucket: process.env.S3_BUCKET,
-    accessKey: process.env.S3_ACCESS_KEY,
-    secretKey: process.env.S3_SECRET_KEY,
-  },
+  storageBackends: [
+    {
+      id: "primary-s3",
+      provider: "aws-s3",
+      endpoint: "https://s3.amazonaws.com",
+      bucket: "pipeweave-prod",
+      region: "us-east-1",
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      },
+      isDefault: true,
+    },
+    {
+      id: "gcs-backup",
+      provider: "gcs",
+      endpoint: "https://storage.googleapis.com",
+      bucket: "pipeweave-backup",
+      credentials: {
+        projectId: "my-project",
+        clientEmail: "service-account@...",
+        privateKey: "-----BEGIN PRIVATE KEY-----\n...",
+      },
+    },
+    {
+      id: "local-minio",
+      provider: "minio",
+      endpoint: "http://localhost:9000",
+      bucket: "pipeweave-dev",
+      credentials: {
+        accessKey: "minioadmin",
+        secretKey: "minioadmin",
+      },
+    },
+  ],
   secretKey: process.env.PIPEWEAVE_SECRET_KEY,
   mode: "standalone",
   maxConcurrency: 10,
@@ -61,20 +90,18 @@ app.post("/api/process", (req, res) => {
 
 ## Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | — | PostgreSQL connection string |
-| `S3_ENDPOINT` | Yes | — | S3/MinIO endpoint |
-| `S3_BUCKET` | Yes | — | Bucket name |
-| `S3_ACCESS_KEY` | Yes | — | S3 access key |
-| `S3_SECRET_KEY` | Yes | — | S3 secret key |
-| `PIPEWEAVE_SECRET_KEY` | Yes | — | Shared JWT encryption key |
-| `MODE` | No | `standalone` | Execution mode (`standalone` or `serverless`) |
-| `MAX_CONCURRENCY` | No | `10` | Maximum parallel tasks |
-| `POLL_INTERVAL_MS` | No | `1000` | Task polling interval (standalone mode) |
-| `DLQ_RETENTION_DAYS` | No | `30` | How long to keep DLQ entries |
-| `IDEMPOTENCY_TTL_SECONDS` | No | `86400` | Default idempotency cache TTL |
-| `MAX_RETRY_DELAY_MS` | No | `86400000` | Default max retry delay (24h) |
+| Variable                     | Required | Default      | Description                                   |
+| ---------------------------- | -------- | ------------ | --------------------------------------------- |
+| `DATABASE_URL`               | Yes      | —            | PostgreSQL connection string                  |
+| `STORAGE_BACKENDS`           | Yes\*    | —            | JSON array of storage backend configurations  |
+| `DEFAULT_STORAGE_BACKEND_ID` | No       | —            | Default storage backend ID                    |
+| `PIPEWEAVE_SECRET_KEY`       | Yes      | —            | Shared JWT encryption key                     |
+| `MODE`                       | No       | `standalone` | Execution mode (`standalone` or `serverless`) |
+| `MAX_CONCURRENCY`            | No       | `10`         | Maximum parallel tasks                        |
+| `POLL_INTERVAL_MS`           | No       | `1000`       | Task polling interval (standalone mode)       |
+| `DLQ_RETENTION_DAYS`         | No       | `30`         | How long to keep DLQ entries                  |
+| `IDEMPOTENCY_TTL_SECONDS`    | No       | `86400`      | Default idempotency cache TTL                 |
+| `MAX_RETRY_DELAY_MS`         | No       | `86400000`   | Default max retry delay (24h)                 |
 
 ## API Endpoints
 
@@ -121,18 +148,25 @@ app.post("/api/process", (req, res) => {
 
 ## Architecture
 
+### Multi-Storage Backend Support
+
+The orchestrator supports multiple storage backends (AWS S3, Google Cloud Storage, MinIO) simultaneously. Each backend is configured with provider-specific credentials and workers automatically use the appropriate SDK based on the provider type.
+
 ### Worker-Side Hydration
 
-The orchestrator generates JWT tokens containing encrypted S3 credentials. Workers decrypt these tokens and load data directly from S3, minimizing data transfer through the orchestrator.
+The orchestrator generates JWT tokens containing encrypted storage backend credentials. Workers decrypt these tokens, instantiate the appropriate storage provider, and load data directly from storage, minimizing data transfer through the orchestrator.
 
 ```
 Orchestrator                     Worker
      |                              |
      |--- JWT + metadata ---------->|
-     |                              |
+     |   (backend credentials)      |
      |                         Decrypt JWT
      |                              |
-     |                         Load from S3
+     |                    Create Storage Provider
+     |                    (S3/GCS/MinIO)
+     |                              |
+     |                      Load from Storage
      |                              |
      |                         Execute task
      |                              |
@@ -160,11 +194,13 @@ The orchestrator tracks task code changes via SHA-256 hashing:
 ### Deployment Modes
 
 **Standalone Mode:**
+
 - Orchestrator runs a background poller
 - Continuously processes pending tasks
 - Suitable for dedicated servers, VMs, containers
 
 **Serverless Mode:**
+
 - No background polling
 - External scheduler (Cloud Scheduler, cron) triggers `/api/process`
 - Suitable for Cloud Run, Lambda, serverless platforms
@@ -214,6 +250,7 @@ curl http://localhost:3000/api/dlq
 ```
 
 Failed tasks after all retries are preserved with:
+
 - Original input and context
 - All attempt errors
 - Code version at failure time
@@ -225,11 +262,13 @@ Failed tasks after all retries are preserved with:
 The orchestrator encrypts S3 credentials using AES-256-GCM:
 
 1. Generate a 32-byte shared secret:
+
    ```bash
    openssl rand -hex 32
    ```
 
 2. Set on both orchestrator and all workers:
+
    ```bash
    export PIPEWEAVE_SECRET_KEY="your-32-byte-hex-key"
    ```

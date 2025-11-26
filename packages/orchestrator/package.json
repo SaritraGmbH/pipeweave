@@ -6,7 +6,9 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "pipeweave-orchestrator": "./dist/bin/server.js"
+    "pipeweave-orchestrator": "./dist/bin/server.js",
+    "pipeweave-db": "./dist/bin/db-cli.js",
+    "pipeweave-test-db": "./dist/bin/test-db.js"
   },
   "exports": {
     ".": {
@@ -28,22 +30,19 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@pipeweave/shared": "workspace:*",
     "@aws-sdk/client-s3": "^3.478.0",
-    "drizzle-orm": "^0.29.1",
+    "commander": "^11.1.0",
     "fastify": "^4.25.0",
-    "postgres": "^3.4.3",
+    "pg-promise": "^11.5.4",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
-    "drizzle-kit": "^0.20.9",
+    "@types/pg": "^8.10.9",
     "eslint": "^8.55.0",
     "tsx": "^4.7.0",
     "typescript": "^5.3.0",

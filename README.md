@@ -110,7 +110,7 @@ pipeweave/
 
 - **Node.js >= 18** and **npm >= 9**
 - **PostgreSQL** (for orchestrator database)
-- **S3 or MinIO** (for data storage)
+- **Storage Backend** (AWS S3, Google Cloud Storage, or MinIO)
 
 ### Architecture Overview
 
@@ -220,7 +220,11 @@ docker run -d \
 createdb pipeweave
 ```
 
-**MinIO (S3-compatible storage):**
+**Storage Backend:**
+
+Choose one of the following storage backends:
+
+**Option 1: MinIO (Recommended for development)**
 
 ```bash
 # Using Docker
@@ -237,6 +241,14 @@ docker run -d \
 mc alias set local http://localhost:9000 minioadmin minioadmin
 mc mb local/pipeweave
 ```
+
+**Option 2: AWS S3**
+
+Create an S3 bucket and IAM user with appropriate permissions.
+
+**Option 3: Google Cloud Storage**
+
+Create a GCS bucket and service account with Storage Admin role.
 
 #### 3. Configure Environment
 
@@ -257,8 +269,46 @@ openssl rand -hex 32
 **Required variables:**
 
 - `DATABASE_URL` — PostgreSQL connection string
-- `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` — S3/MinIO credentials
+- `STORAGE_BACKENDS` — JSON array of storage backend configurations, or use legacy single-backend variables (see below)
 - `PIPEWEAVE_SECRET_KEY` — Shared encryption key (must be same on orchestrator and all workers)
+
+**Storage Configuration Examples:**
+
+```bash
+# Multi-backend configuration (supports AWS S3, GCS, and MinIO simultaneously)
+STORAGE_BACKENDS='[
+  {
+    "id": "primary-s3",
+    "provider": "aws-s3",
+    "endpoint": "https://s3.amazonaws.com",
+    "bucket": "pipeweave-prod",
+    "region": "us-east-1",
+    "credentials": {
+      "accessKeyId": "AKIA...",
+      "secretAccessKey": "..."
+    },
+    "isDefault": true
+  },
+  {
+    "id": "local-minio",
+    "provider": "minio",
+    "endpoint": "http://localhost:9000",
+    "bucket": "pipeweave-dev",
+    "credentials": {
+      "accessKey": "minioadmin",
+      "secretKey": "minioadmin"
+    }
+  }
+]'
+DEFAULT_STORAGE_BACKEND_ID=primary-s3
+
+# OR use legacy single-backend configuration (backward compatible)
+STORAGE_PROVIDER=minio  # or 'aws-s3' or 'gcs'
+S3_ENDPOINT=http://localhost:9000
+S3_BUCKET=pipeweave
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+```
 
 #### 4. Initialize Database
 

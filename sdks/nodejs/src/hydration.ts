@@ -1,15 +1,16 @@
 import { mkdir, writeFile, readFile, rm, copyFile, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AssetType, AssetMetadata } from '@pipeweave/shared';
-import type { StorageCredentials } from './crypto.js';
+import type { AssetType, AssetMetadata, StorageBackendCredentials, IStorageProvider } from '@pipeweave/shared';
+import { createStorageProvider } from '@pipeweave/shared';
+import './storage/index.js'; // Register all storage providers
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export interface HydrationManagerOptions {
-  credentials: StorageCredentials;
+  credentials: StorageBackendCredentials;
   tempDir: string;
   runId: string;
   cleanupOnFailure: boolean;
@@ -25,29 +26,29 @@ interface UpstreamRef {
 // ============================================================================
 
 export class HydrationManager {
-  private credentials: StorageCredentials;
+  private storageProvider: IStorageProvider;
   private tempDir: string;
   private runId: string;
   private cleanupOnFailure: boolean;
-  
+
   private localAssets: Map<string, { type: AssetType; localPath: string }> = new Map();
-  private upstreamAssets: Map<string, { type: AssetType; s3Path: string; localPath?: string }> = new Map();
+  private upstreamAssets: Map<string, { type: AssetType; storagePath: string; localPath?: string }> = new Map();
   private logs: unknown[] = [];
 
   constructor(options: HydrationManagerOptions) {
-    this.credentials = options.credentials;
+    this.storageProvider = createStorageProvider(options.credentials);
     this.tempDir = join(options.tempDir, options.runId);
     this.runId = options.runId;
     this.cleanupOnFailure = options.cleanupOnFailure;
   }
 
   /**
-   * Load input from S3
+   * Load input from storage
    */
   async loadInput(inputPath: string): Promise<unknown> {
     await this.ensureTempDir();
-    const content = await this.downloadFromS3(inputPath);
-    return JSON.parse(content);
+    const content = await this.storageProvider.download(inputPath);
+    return JSON.parse(content.toString('utf-8'));
   }
 
   /**
@@ -57,15 +58,15 @@ export class HydrationManager {
     const upstream: Record<string, unknown> = {};
 
     for (const [taskId, ref] of Object.entries(upstreamRefs)) {
-      const content = await this.downloadFromS3(ref.outputPath);
-      upstream[taskId] = JSON.parse(content);
+      const content = await this.storageProvider.download(ref.outputPath);
+      upstream[taskId] = JSON.parse(content.toString('utf-8'));
 
       // Register upstream assets for lazy loading
       if (ref.assets) {
         for (const [key, metadata] of Object.entries(ref.assets)) {
           this.upstreamAssets.set(key, {
             type: metadata.type,
-            s3Path: metadata.path,
+            storagePath: metadata.path,
           });
         }
       }
@@ -175,9 +176,9 @@ export class HydrationManager {
     const localPath = join(this.tempDir, 'upstream-assets', key);
     await mkdir(join(this.tempDir, 'upstream-assets'), { recursive: true });
 
-    const content = await this.downloadFromS3(upstream.s3Path);
+    const content = await this.storageProvider.download(upstream.storagePath);
     await writeFile(localPath, content);
-    
+
     upstream.localPath = localPath;
     return localPath;
   }
@@ -190,7 +191,7 @@ export class HydrationManager {
   }
 
   /**
-   * Dehydrate: upload output and assets to S3
+   * Dehydrate: upload output and assets to storage
    */
   async dehydrate(output: unknown): Promise<{
     outputPath: string;
@@ -199,11 +200,11 @@ export class HydrationManager {
     logsPath: string;
   }> {
     const basePath = `runs/${this.runId}`;
-    
+
     // Upload output
     const outputContent = JSON.stringify(output, null, 2);
     const outputPath = `${basePath}/output.json`;
-    await this.uploadToS3(outputPath, outputContent, 'application/json');
+    await this.storageProvider.upload(outputPath, outputContent, 'application/json');
 
     // Upload assets
     const assets: Record<string, AssetMetadata> = {};
@@ -211,9 +212,9 @@ export class HydrationManager {
       const content = await readFile(asset.localPath);
       const assetPath = `${basePath}/assets/${key}`;
       const contentType = this.getContentType(asset.type);
-      
-      await this.uploadToS3(assetPath, content, contentType);
-      
+
+      await this.storageProvider.upload(assetPath, content, contentType);
+
       assets[key] = {
         path: assetPath,
         size: content.length,
@@ -224,7 +225,7 @@ export class HydrationManager {
     // Upload logs
     const logsContent = this.logs.map((l) => JSON.stringify(l)).join('\n');
     const logsPath = `${basePath}/logs.jsonl`;
-    await this.uploadToS3(logsPath, logsContent, 'application/x-ndjson');
+    await this.storageProvider.upload(logsPath, logsContent, 'application/x-ndjson');
 
     // Cleanup temp directory
     await this.cleanup();
@@ -260,48 +261,5 @@ export class HydrationManager {
       default:
         return 'application/octet-stream';
     }
-  }
-
-  // ============================================================================
-  // S3 Operations (using fetch for simplicity - consider using @aws-sdk/client-s3)
-  // ============================================================================
-
-  private async downloadFromS3(path: string): Promise<string> {
-    const url = `${this.credentials.endpoint}/${this.credentials.bucket}/${path}`;
-    
-    const response = await fetch(url, {
-      headers: this.getAuthHeaders('GET', path),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to download from S3: ${response.status} ${response.statusText}`);
-    }
-
-    return response.text();
-  }
-
-  private async uploadToS3(path: string, content: string | Buffer, contentType: string): Promise<void> {
-    const url = `${this.credentials.endpoint}/${this.credentials.bucket}/${path}`;
-    
-    const response = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        ...this.getAuthHeaders('PUT', path),
-        'Content-Type': contentType,
-      },
-      body: content,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to upload to S3: ${response.status} ${response.statusText}`);
-    }
-  }
-
-  private getAuthHeaders(method: string, path: string): Record<string, string> {
-    // Simplified auth headers - in production, use proper AWS Signature V4
-    // This is a placeholder that works with MinIO's legacy auth
-    return {
-      'Authorization': `AWS ${this.credentials.accessKey}:${this.credentials.secretKey}`,
-    };
   }
 }

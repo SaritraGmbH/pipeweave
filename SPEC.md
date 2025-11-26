@@ -122,7 +122,7 @@ flowchart TB
     end
 
     DB[(PostgreSQL<br/>State & Metadata)]
-    S3[(S3 / MinIO<br/>Outputs & Assets)]
+    S3[(Storage Backends<br/>AWS S3 / GCS / MinIO<br/>Outputs & Assets)]
 
     subgraph Services["🔧 Workers"]
         subgraph W1["Worker"]
@@ -183,15 +183,20 @@ flowchart LR
 │  Shared Secret Key (PIPEWEAVE_SECRET_KEY)                       │
 │  ────────────────────────────────────────                       │
 │  • Set on orchestrator and all workers                          │
-│  • Used to encrypt/decrypt JWT containing S3 credentials        │
+│  • Used to encrypt/decrypt JWT containing storage credentials   │
 │  • AES-256-GCM encryption with auth tag                         │
 │                                                                 │
 │  JWT Payload (encrypted):                                       │
 │  {                                                              │
+│    "id": "primary-s3",                                          │
+│    "provider": "aws-s3",                                        │
 │    "endpoint": "https://s3.amazonaws.com",                      │
 │    "bucket": "pipeweave-data",                                  │
-│    "accessKey": "AKIA...",                                      │
-│    "secretKey": "..."                                           │
+│    "region": "us-east-1",                                       │
+│    "credentials": {                                             │
+│      "accessKeyId": "AKIA...",                                  │
+│      "secretAccessKey": "..."                                   │
+│    }                                                            │
 │  }                                                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -1479,9 +1484,163 @@ MODE=serverless
 
 ## Storage & Data Flow
 
+### Multi-Storage Backend Support
+
+PipeWeave supports multiple storage backends simultaneously, allowing you to use different providers for different use cases:
+
+**Supported Providers:**
+- **AWS S3** — Amazon's object storage service
+- **Google Cloud Storage (GCS)** — Google's object storage
+- **MinIO** — Self-hosted S3-compatible storage
+
+**Configuration:**
+
+You can configure multiple storage backends in the orchestrator. Each backend is identified by a unique ID and configured with provider-specific credentials:
+
+```typescript
+const orchestrator = createOrchestrator({
+  databaseUrl: process.env.DATABASE_URL,
+  storageBackends: [
+    {
+      id: 'primary-s3',
+      provider: 'aws-s3',
+      endpoint: 'https://s3.amazonaws.com',
+      bucket: 'pipeweave-prod',
+      region: 'us-east-1',
+      credentials: {
+        accessKeyId: 'AKIA...',
+        secretAccessKey: '...',
+      },
+      isDefault: true,
+    },
+    {
+      id: 'gcs-backup',
+      provider: 'gcs',
+      endpoint: 'https://storage.googleapis.com',
+      bucket: 'pipeweave-backup',
+      credentials: {
+        projectId: 'my-project',
+        clientEmail: 'service-account@my-project.iam.gserviceaccount.com',
+        privateKey: '-----BEGIN PRIVATE KEY-----\n...',
+      },
+    },
+    {
+      id: 'local-minio',
+      provider: 'minio',
+      endpoint: 'http://localhost:9000',
+      bucket: 'pipeweave-dev',
+      credentials: {
+        accessKey: 'minioadmin',
+        secretKey: 'minioadmin',
+      },
+    },
+  ],
+  defaultStorageBackendId: 'primary-s3', // Optional, uses first or marked default
+  // ... other config
+});
+```
+
+**Environment Variables:**
+
+```bash
+# Multi-backend configuration (JSON)
+STORAGE_BACKENDS='[
+  {
+    "id": "primary-s3",
+    "provider": "aws-s3",
+    "endpoint": "https://s3.amazonaws.com",
+    "bucket": "pipeweave-prod",
+    "region": "us-east-1",
+    "credentials": {
+      "accessKeyId": "AKIA...",
+      "secretAccessKey": "..."
+    },
+    "isDefault": true
+  },
+  {
+    "id": "gcs-backup",
+    "provider": "gcs",
+    "endpoint": "https://storage.googleapis.com",
+    "bucket": "pipeweave-backup",
+    "credentials": {
+      "projectId": "my-project",
+      "clientEmail": "service-account@...",
+      "privateKey": "-----BEGIN PRIVATE KEY-----\n..."
+    }
+  }
+]'
+DEFAULT_STORAGE_BACKEND_ID=primary-s3
+
+# Legacy single-backend configuration (backward compatible)
+STORAGE_PROVIDER=aws-s3  # or 'gcs' or 'minio'
+S3_ENDPOINT=https://s3.amazonaws.com
+S3_BUCKET=pipeweave-data
+S3_REGION=us-east-1
+S3_ACCESS_KEY=AKIA...
+S3_SECRET_KEY=...
+```
+
+**Provider-Specific Credentials:**
+
+| Provider | Credentials Required |
+|----------|---------------------|
+| **AWS S3** | `accessKeyId`, `secretAccessKey`, optional `sessionToken` |
+| **GCS** | `projectId`, `clientEmail`, `privateKey` (service account JSON) |
+| **MinIO** | `accessKey`, `secretKey` |
+
+**How It Works:**
+
+1. **Worker Registration**: Orchestrator selects a storage backend (default or specified)
+2. **JWT Generation**: Orchestrator encrypts backend credentials into JWT token
+3. **Worker Decryption**: Worker decrypts JWT to get storage credentials
+4. **Provider Factory**: Worker creates appropriate storage provider (S3/GCS/MinIO)
+5. **Direct Access**: Worker accesses storage directly using provider-specific SDK
+
+```mermaid
+flowchart LR
+    subgraph Orchestrator
+        Config[Storage Backends Config]
+        Select[Select Backend]
+        Encrypt[Encrypt to JWT]
+    end
+
+    subgraph Worker
+        Decrypt[Decrypt JWT]
+        Factory[Provider Factory]
+        S3[S3 Provider]
+        GCS[GCS Provider]
+        MinIO[MinIO Provider]
+    end
+
+    subgraph Storage
+        AWS[AWS S3]
+        Google[GCS]
+        Local[MinIO]
+    end
+
+    Config --> Select
+    Select --> Encrypt
+    Encrypt --> Decrypt
+    Decrypt --> Factory
+    Factory --> S3
+    Factory --> GCS
+    Factory --> MinIO
+    S3 --> AWS
+    GCS --> Google
+    MinIO --> Local
+```
+
+**Use Cases:**
+
+- **Multi-cloud redundancy** — Store data in both AWS and GCS
+- **Cost optimization** — Use cheaper storage for non-critical data
+- **Data residency** — Keep data in specific regions or providers
+- **Development workflow** — Local MinIO for dev, S3 for production
+- **Migration** — Gradually move from one provider to another
+
 ### Data Storage Strategy
 
-**All data is stored in S3** — the PostgreSQL database only stores metadata (paths, sizes, status):
+**All data is stored in cloud storage** — the PostgreSQL database only stores metadata (paths, sizes, status):
 
 | Data Type      | Location                                     | Purpose                |
 | -------------- | -------------------------------------------- | ---------------------- |
@@ -1818,20 +1977,34 @@ gantt
 
 #### Orchestrator
 
-| Variable                  | Required | Default      | Description                   |
-| ------------------------- | -------- | ------------ | ----------------------------- |
-| `DATABASE_URL`            | Yes      | —            | PostgreSQL connection         |
-| `S3_ENDPOINT`             | Yes      | —            | S3/MinIO endpoint             |
-| `S3_BUCKET`               | Yes      | —            | Bucket name                   |
-| `S3_ACCESS_KEY`           | Yes      | —            | Access key                    |
-| `S3_SECRET_KEY`           | Yes      | —            | Secret key                    |
-| `PIPEWEAVE_SECRET_KEY`    | Yes      | —            | **Shared JWT encryption key** |
-| `MODE`                    | No       | `standalone` | Execution mode                |
-| `MAX_CONCURRENCY`         | No       | `10`         | Parallel tasks                |
-| `POLL_INTERVAL_MS`        | No       | `1000`       | Task polling interval         |
-| `DLQ_RETENTION_DAYS`      | No       | `30`         | How long to keep DLQ entries  |
-| `IDEMPOTENCY_TTL_SECONDS` | No       | `86400`      | Default idempotency cache TTL |
-| `MAX_RETRY_DELAY_MS`      | No       | `86400000`   | Default max retry delay (24h) |
+| Variable                     | Required | Default      | Description                                          |
+| ---------------------------- | -------- | ------------ | ---------------------------------------------------- |
+| `DATABASE_URL`               | Yes      | —            | PostgreSQL connection                                |
+| `STORAGE_BACKENDS`           | Yes*     | —            | JSON array of storage backend configurations         |
+| `DEFAULT_STORAGE_BACKEND_ID` | No       | —            | Default storage backend ID (uses first if not set)   |
+| `PIPEWEAVE_SECRET_KEY`       | Yes      | —            | **Shared JWT encryption key**                        |
+| `MODE`                       | No       | `standalone` | Execution mode                                       |
+| `MAX_CONCURRENCY`            | No       | `10`         | Parallel tasks                                       |
+| `POLL_INTERVAL_MS`           | No       | `1000`       | Task polling interval                                |
+| `DLQ_RETENTION_DAYS`         | No       | `30`         | How long to keep DLQ entries                         |
+| `IDEMPOTENCY_TTL_SECONDS`    | No       | `86400`      | Default idempotency cache TTL                        |
+| `MAX_RETRY_DELAY_MS`         | No       | `86400000`   | Default max retry delay (24h)                        |
+
+*Or use legacy single-backend variables for backward compatibility:
+
+| Variable            | Description                                 |
+| ------------------- | ------------------------------------------- |
+| `STORAGE_PROVIDER`  | Provider type: `aws-s3`, `gcs`, or `minio`  |
+| `S3_ENDPOINT`       | Storage endpoint URL                        |
+| `S3_BUCKET`         | Bucket name                                 |
+| `S3_REGION`         | Region (for S3)                             |
+| `S3_ACCESS_KEY`     | Access key (S3/MinIO)                       |
+| `S3_SECRET_KEY`     | Secret key (S3/MinIO)                       |
+| `GCS_PROJECT_ID`    | GCS project ID                              |
+| `GCS_CLIENT_EMAIL`  | GCS service account email                   |
+| `GCS_PRIVATE_KEY`   | GCS service account private key             |
+| `MINIO_ACCESS_KEY`  | MinIO access key                            |
+| `MINIO_SECRET_KEY`  | MinIO secret key                            |
 
 #### Worker (SDK)
 

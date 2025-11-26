@@ -1,16 +1,8 @@
 import { createDecipheriv, createCipheriv, randomBytes } from 'node:crypto';
+import type { StorageBackendCredentials } from '@pipeweave/shared';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface StorageCredentials {
-  endpoint: string;
-  bucket: string;
-  accessKey: string;
-  secretKey: string;
-  region?: string;
-}
+// Re-export for backward compatibility
+export type { StorageBackendCredentials as StorageCredentials };
 
 // ============================================================================
 // Constants
@@ -25,9 +17,9 @@ const AUTH_TAG_LENGTH = 16;
 // ============================================================================
 
 /**
- * Decrypt a storage token (JWT with S3 credentials)
+ * Decrypt a storage token (JWT with storage backend credentials)
  */
-export function decryptStorageToken(token: string, secretKey: string): StorageCredentials {
+export function decryptStorageToken(token: string, secretKey: string): StorageBackendCredentials {
   // Token format: base64(iv):base64(authTag):base64(encrypted)
   const parts = token.split(':');
   if (parts.length !== 3) {
@@ -46,20 +38,20 @@ export function decryptStorageToken(token: string, secretKey: string): StorageCr
   decipher.setAuthTag(authTag);
 
   const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
-  
-  return JSON.parse(decrypted.toString('utf-8')) as StorageCredentials;
+
+  return JSON.parse(decrypted.toString('utf-8')) as StorageBackendCredentials;
 }
 
 /**
  * Encrypt credentials to a storage token (for testing)
  */
-export function encryptStorageToken(credentials: StorageCredentials, secretKey: string): string {
+export function encryptStorageToken(credentials: StorageBackendCredentials, secretKey: string): string {
   const iv = randomBytes(IV_LENGTH);
   const key = deriveKey(secretKey);
 
   const cipher = createCipheriv(ALGORITHM, key, iv);
   const plaintext = Buffer.from(JSON.stringify(credentials), 'utf-8');
-  
+
   const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const authTag = cipher.getAuthTag();
 
