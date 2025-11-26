@@ -1,28 +1,8 @@
 import type { Database } from './index.js';
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 // ============================================================================
-// Migration Functions
+// Database Utility Functions
 // ============================================================================
-
-/**
- * Initialize database schema
- */
-export async function initializeSchema(db: Database): Promise<void> {
-  console.log('[db] Initializing database schema...');
-
-  const schemaPath = join(__dirname, 'schema.sql');
-  const schemaSql = readFileSync(schemaPath, 'utf-8');
-
-  await db.none(schemaSql);
-
-  console.log('[db] Database schema initialized successfully');
-}
 
 /**
  * Check if database is initialized
@@ -60,20 +40,28 @@ export async function dropAllTables(db: Database): Promise<void> {
     DROP TABLE IF EXISTS task_code_history CASCADE;
     DROP TABLE IF EXISTS tasks CASCADE;
     DROP TABLE IF EXISTS services CASCADE;
+    DROP TABLE IF EXISTS orchestrator_state CASCADE;
+    DROP TABLE IF EXISTS schema_migrations CASCADE;
     DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
     DROP FUNCTION IF EXISTS cleanup_expired_idempotency_cache CASCADE;
+    DROP FUNCTION IF EXISTS update_orchestrator_state_timestamp CASCADE;
   `);
 
   console.log('[db] All tables dropped successfully');
 }
 
 /**
- * Reset database (drop and recreate)
+ * Reset database (drop and recreate using migrations)
  */
 export async function resetDatabase(db: Database): Promise<void> {
   console.log('[db] Resetting database...');
+
   await dropAllTables(db);
-  await initializeSchema(db);
+
+  // Import dynamically to avoid circular dependency
+  const { runMigrations } = await import('./migration-runner.js');
+  await runMigrations(db);
+
   console.log('[db] Database reset complete');
 }
 

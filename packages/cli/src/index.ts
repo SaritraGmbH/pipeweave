@@ -1,10 +1,5 @@
-// Re-export types for programmatic usage
-export type {
-  TriggerPipelineRequest,
-  TriggerPipelineResponse,
-  QueueTaskRequest,
-  QueueTaskResponse,
-  QueueStatusResponse,
-  DLQItem,
-  DLQListResponse,
-} from '@pipeweave/shared';
+// CLI package - exports database and maintenance utilities for programmatic usage
+export * from './db/index.js';
+export * from './db/migrations.js';
+export * from './db/migration-runner.js';
+export * from './maintenance.js';

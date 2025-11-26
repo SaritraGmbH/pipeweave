@@ -1489,6 +1489,7 @@ MODE=serverless
 PipeWeave supports multiple storage backends simultaneously, allowing you to use different providers for different use cases:
 
 **Supported Providers:**
+- **Local** — Local filesystem storage (ideal for development)
 - **AWS S3** — Amazon's object storage service
 - **Google Cloud Storage (GCS)** — Google's object storage
 - **MinIO** — Self-hosted S3-compatible storage
@@ -1502,6 +1503,16 @@ const orchestrator = createOrchestrator({
   databaseUrl: process.env.DATABASE_URL,
   storageBackends: [
     {
+      id: 'local-dev',
+      provider: 'local',
+      endpoint: 'file://',
+      bucket: 'data',
+      credentials: {
+        basePath: './storage',
+      },
+      isDefault: true,
+    },
+    {
       id: 'primary-s3',
       provider: 'aws-s3',
       endpoint: 'https://s3.amazonaws.com',
@@ -1511,7 +1522,6 @@ const orchestrator = createOrchestrator({
         accessKeyId: 'AKIA...',
         secretAccessKey: '...',
       },
-      isDefault: true,
     },
     {
       id: 'gcs-backup',
@@ -1535,7 +1545,7 @@ const orchestrator = createOrchestrator({
       },
     },
   ],
-  defaultStorageBackendId: 'primary-s3', // Optional, uses first or marked default
+  defaultStorageBackendId: 'local-dev', // Optional, uses first or marked default
   // ... other config
 });
 ```
@@ -1546,6 +1556,16 @@ const orchestrator = createOrchestrator({
 # Multi-backend configuration (JSON)
 STORAGE_BACKENDS='[
   {
+    "id": "local-dev",
+    "provider": "local",
+    "endpoint": "file://",
+    "bucket": "data",
+    "credentials": {
+      "basePath": "./storage"
+    },
+    "isDefault": true
+  },
+  {
     "id": "primary-s3",
     "provider": "aws-s3",
     "endpoint": "https://s3.amazonaws.com",
@@ -1554,8 +1574,7 @@ STORAGE_BACKENDS='[
     "credentials": {
       "accessKeyId": "AKIA...",
       "secretAccessKey": "..."
-    },
-    "isDefault": true
+    }
   },
   {
     "id": "gcs-backup",
@@ -1569,21 +1588,14 @@ STORAGE_BACKENDS='[
     }
   }
 ]'
-DEFAULT_STORAGE_BACKEND_ID=primary-s3
-
-# Legacy single-backend configuration (backward compatible)
-STORAGE_PROVIDER=aws-s3  # or 'gcs' or 'minio'
-S3_ENDPOINT=https://s3.amazonaws.com
-S3_BUCKET=pipeweave-data
-S3_REGION=us-east-1
-S3_ACCESS_KEY=AKIA...
-S3_SECRET_KEY=...
+DEFAULT_STORAGE_BACKEND_ID=local-dev
 ```
 
 **Provider-Specific Credentials:**
 
 | Provider | Credentials Required |
 |----------|---------------------|
+| **Local** | `basePath` — Base directory path for storing files |
 | **AWS S3** | `accessKeyId`, `secretAccessKey`, optional `sessionToken` |
 | **GCS** | `projectId`, `clientEmail`, `privateKey` (service account JSON) |
 | **MinIO** | `accessKey`, `secretKey` |
@@ -1632,10 +1644,11 @@ flowchart LR
 
 **Use Cases:**
 
+- **Local development** — Use local filesystem storage for fast iteration without cloud dependencies
 - **Multi-cloud redundancy** — Store data in both AWS and GCS
 - **Cost optimization** — Use cheaper storage for non-critical data
 - **Data residency** — Keep data in specific regions or providers
-- **Development workflow** — Local MinIO for dev, S3 for production
+- **Hybrid workflows** — Local storage for dev, MinIO for staging, S3 for production
 - **Migration** — Gradually move from one provider to another
 
 ### Data Storage Strategy
@@ -1989,22 +2002,6 @@ gantt
 | `DLQ_RETENTION_DAYS`         | No       | `30`         | How long to keep DLQ entries                         |
 | `IDEMPOTENCY_TTL_SECONDS`    | No       | `86400`      | Default idempotency cache TTL                        |
 | `MAX_RETRY_DELAY_MS`         | No       | `86400000`   | Default max retry delay (24h)                        |
-
-*Or use legacy single-backend variables for backward compatibility:
-
-| Variable            | Description                                 |
-| ------------------- | ------------------------------------------- |
-| `STORAGE_PROVIDER`  | Provider type: `aws-s3`, `gcs`, or `minio`  |
-| `S3_ENDPOINT`       | Storage endpoint URL                        |
-| `S3_BUCKET`         | Bucket name                                 |
-| `S3_REGION`         | Region (for S3)                             |
-| `S3_ACCESS_KEY`     | Access key (S3/MinIO)                       |
-| `S3_SECRET_KEY`     | Secret key (S3/MinIO)                       |
-| `GCS_PROJECT_ID`    | GCS project ID                              |
-| `GCS_CLIENT_EMAIL`  | GCS service account email                   |
-| `GCS_PRIVATE_KEY`   | GCS service account private key             |
-| `MINIO_ACCESS_KEY`  | MinIO access key                            |
-| `MINIO_SECRET_KEY`  | MinIO secret key                            |
 
 #### Worker (SDK)
 

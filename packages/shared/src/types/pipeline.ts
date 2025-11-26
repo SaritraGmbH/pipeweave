@@ -6,9 +6,9 @@ import {
   PipelineStatusSchema,
   FailureMode,
   FailureModeSchema,
-  AssetMetadata,
   AssetMetadataSchema,
 } from './task.js';
+import type { AssetMetadata } from './task.js';
 
 // ============================================================================
 // Task Definition (registered with orchestrator)

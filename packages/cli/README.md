@@ -16,6 +16,28 @@ npx @pipeweave/cli <command>
 
 ## Quick Start
 
+### Interactive Mode
+
+Simply run `pipeweave` without arguments to launch the interactive CLI with the ASCII logo and guided menu:
+
+```bash
+pipeweave
+```
+
+This will display the PipeWeave logo and present you with an interactive menu where you can:
+- 🚀 Trigger pipelines
+- 📊 Check pipeline status
+- 🔍 List services
+- 🧪 Run dry-run validations
+- 💾 Manage databases
+- 🔧 Control maintenance mode
+- ⚰️ Manage dead letter queue
+- 📦 Initialize projects
+
+The interactive mode will guide you through setting all required variables with prompts and validation.
+
+### Command Line Mode
+
 ```bash
 # Initialize a new project
 pipeweave init --name my-service
@@ -36,7 +58,93 @@ pipeweave status prun_abc123
 pipeweave dlq list
 ```
 
+## Features
+
+### 🎨 ASCII Art Logo
+
+The CLI displays a beautiful ASCII art logo on startup when running in interactive mode. The logo is also shown when using `--help` with any command.
+
+### 🔗 Saved Connections
+
+Store your database and orchestrator configurations locally for quick access:
+
+- **One connection, both services**: Each connection stores both your orchestrator URL and database configuration
+- **Persistent storage**: Connections are saved to `~/.pipeweave/connections.json`
+- **Easy switching**: Select different connections on startup or from the management menu
+- **Default connection**: Set a default connection that loads automatically
+- **Secure**: Password fields are masked during input
+
+**Example workflow:**
+1. Run `pipeweave` (no arguments)
+2. Create a connection called "production" with your prod URLs and database
+3. Create another called "development" with your dev URLs and database
+4. On startup, choose which environment to work with
+5. All operations automatically use the selected connection's settings (no more prompts!)
+
+**Key benefit:** Once you select a connection, you won't be asked for orchestrator URLs or database credentials again. The CLI automatically uses your saved connection for all operations.
+
+### 🖥️ Interactive Menu System
+
+The interactive mode provides:
+- **Connection management**: Create, edit, delete, and switch between saved connections
+- **Guided workflows**: Step-by-step prompts for all operations
+- **Input validation**: Real-time validation of user inputs
+- **Flexible database configuration**: Choose between environment variables, connection strings, or individual parameters
+- **Context-aware menus**: Different options based on your selection
+- **User-friendly experience**: No need to remember complex command syntax
+
+### Automatic Configuration from Saved Connections
+
+When you have a connection selected:
+
+**For Pipeline Operations** (trigger, status, services, dry-run, DLQ):
+- Automatically uses the orchestrator URL from your connection
+- No prompts for URLs - just enter the specific parameters for each operation
+- Shows which URL is being used before executing
+
+**For Database Operations** (db commands, maintenance):
+- Automatically uses the database configuration from your connection
+- No prompts for credentials - directly executes the requested action
+- Falls back to environment variables or manual input if no database is configured in the connection
+
+**Without a Connection:**
+You can still use the CLI by:
+- Setting environment variables (`PIPEWEAVE_ORCHESTRATOR_URL`, `DATABASE_URL`)
+- Entering connection details when prompted
+- Creating a connection on first run
+
 ## Commands
+
+### Connection Management
+
+The interactive mode includes a comprehensive connection management system. When you launch `pipeweave` without arguments, you'll see:
+
+**On startup:**
+- View current connection status
+- Continue with current/default connection
+- Switch to a different connection
+- Add new connection
+- Delete a connection
+
+**From the main menu** (select "🔗 Manage Connections"):
+- 📋 **List all connections**: View all saved connections with details
+- ➕ **Add new connection**: Create a new connection profile
+- ✏️ **Edit connection**: Update an existing connection
+- 🗑️ **Delete connection**: Remove a connection
+- ⭐ **Set default connection**: Choose which connection loads automatically
+
+**Connection structure:**
+```json
+{
+  "name": "production",
+  "orchestratorUrl": "https://orchestrator.example.com",
+  "database": {
+    "url": "postgresql://user:pass@host:5432/dbname"
+  },
+  "createdAt": "2024-01-15T10:00:00.000Z",
+  "lastUsed": "2024-01-15T14:30:00.000Z"
+}
+```
 
 ### Project Management
 

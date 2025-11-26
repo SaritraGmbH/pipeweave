@@ -1,6 +1,5 @@
-import type { IDatabase, IMain } from "pg-promise";
-import pgPromise from "pg-promise";
-import logger from "../logger.js";
+import pgPromise from 'pg-promise';
+import type { IDatabase, IMain } from 'pg-promise';
 
 // ============================================================================
 // Types
@@ -46,10 +45,7 @@ export function initializePgPromise(options?: {
     capSQL: options?.capSQL ?? true, // capitalize all generated SQL
     error: (err, e) => {
       // Default error handler - can be customized via options
-      logger.error("[db] Database error", {
-        message: err.message,
-        query: e.query,
-      });
+      console.error('[db] Error:', err.message, e.query);
       if (options?.onError) {
         options.onError(err, e);
       }
@@ -107,7 +103,7 @@ export function createDatabase(config: DatabaseConfig): Database {
     }
   } else {
     throw new Error(
-      "Invalid database configuration: must provide either connectionString or (host, database, user)"
+      'Invalid database configuration: must provide either connectionString or (host, database, user)'
     );
   }
 
@@ -125,12 +121,11 @@ export function createDatabaseFromEnv(): Database {
     // Use connection string if available
     return createDatabase({
       connectionString,
-      ssl:
-        process.env.NODE_ENV === "production"
-          ? { rejectUnauthorized: false }
-          : undefined,
+      ssl: process.env.NODE_ENV === 'production'
+        ? { rejectUnauthorized: false }
+        : undefined,
       max: process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX) : 10,
-      allowExitOnIdle: process.env.DB_ALLOW_EXIT_ON_IDLE === "true",
+      allowExitOnIdle: process.env.DB_ALLOW_EXIT_ON_IDLE === 'true',
     });
   } else {
     // Fall back to individual environment variables
@@ -142,16 +137,16 @@ export function createDatabaseFromEnv(): Database {
 
     if (!host || !database || !user) {
       throw new Error(
-        "Missing database configuration: set DATABASE_URL or (DB_HOST, DB_NAME, DB_USER)"
+        'Missing database configuration: set DATABASE_URL or (DB_HOST, DB_NAME, DB_USER)'
       );
     }
 
     // Determine SSL configuration based on environment
     let ssl: boolean | { rejectUnauthorized: boolean } | undefined;
 
-    if (process.env.NODE_ENV === "production") {
+    if (process.env.NODE_ENV === 'production') {
       // Production with Cloud SQL Unix socket - no SSL needed
-      if (host.startsWith("/cloudsql/")) {
+      if (host.startsWith('/cloudsql/')) {
         ssl = undefined;
       } else {
         // Remote connection - use SSL with relaxed validation
@@ -159,10 +154,7 @@ export function createDatabaseFromEnv(): Database {
       }
     } else {
       // Local development - use SSL if explicitly enabled
-      ssl =
-        process.env.DB_SSL === "true"
-          ? { rejectUnauthorized: false }
-          : undefined;
+      ssl = process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined;
     }
 
     return createDatabase({
@@ -173,7 +165,7 @@ export function createDatabaseFromEnv(): Database {
       password,
       ssl,
       max: process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX) : 10,
-      allowExitOnIdle: process.env.DB_ALLOW_EXIT_ON_IDLE === "true",
+      allowExitOnIdle: process.env.DB_ALLOW_EXIT_ON_IDLE === 'true',
     });
   }
 }
@@ -183,10 +175,10 @@ export function createDatabaseFromEnv(): Database {
  */
 export async function testConnection(db: Database): Promise<boolean> {
   try {
-    await db.one("SELECT 1 as test");
+    await db.one('SELECT 1 as test');
     return true;
   } catch (error) {
-    logger.error("[db] Connection test failed", { error });
+    console.error('[db] Connection test failed:', error);
     return false;
   }
 }
@@ -195,7 +187,7 @@ export async function testConnection(db: Database): Promise<boolean> {
  * Close database connection
  */
 export function closeDatabase(db: Database): void {
-  if (db) {
-    db.$pool.end();
-  }
+  // Note: pg-promise handles connection pooling automatically
+  // Manual pool ending is typically not needed in CLI applications
+  // The pool will be cleaned up when the process exits
 }

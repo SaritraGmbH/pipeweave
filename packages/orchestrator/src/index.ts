@@ -1,24 +1,26 @@
 // PipeWeave Orchestrator
 
-export { createOrchestrator, createOrchestratorFromEnv, Orchestrator } from './orchestrator.js';
-export type { OrchestratorConfig } from './orchestrator.js';
-
-// Database
 export {
-  createDatabase,
-  createDatabaseFromEnv,
-  testConnection,
-  closeDatabase,
-  initializePgPromise,
-} from './db/index.js';
-export type { Database, DatabaseConfig } from './db/index.js';
+  createOrchestrator,
+  createOrchestratorFromEnv,
+  Orchestrator,
+} from "./orchestrator.js";
+export type { OrchestratorConfig } from "./orchestrator.js";
 
-// Migrations
+// Maintenance Mode
 export {
-  initializeSchema,
-  isDatabaseInitialized,
-  getDatabaseStatus,
-  resetDatabase,
-  dropAllTables,
-  runCleanupTasks,
-} from './db/migrations.js';
+  canAcceptTasks,
+  checkMaintenanceTransition,
+  enterMaintenance,
+  exitMaintenance,
+  getMaintenanceStatus,
+  getOrchestratorState,
+  getTaskCounts,
+  requestMaintenance,
+  updateTaskCounts,
+} from "./maintenance.js";
+export type {
+  MaintenanceStatus,
+  OrchestratorMode,
+  OrchestratorState,
+} from "./maintenance.js";

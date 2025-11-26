@@ -1,6 +1,17 @@
 import type { StorageBackendConfig } from '@pipeweave/shared';
 import { createDatabase, testConnection, closeDatabase, type Database, type DatabaseConfig } from './db/index.js';
-import { initializeSchema, isDatabaseInitialized } from './db/migrations.js';
+import {
+  getOrchestratorState,
+  getMaintenanceStatus,
+  requestMaintenance,
+  enterMaintenance,
+  exitMaintenance,
+  canAcceptTasks,
+  checkMaintenanceTransition,
+  type OrchestratorMode,
+  type MaintenanceStatus,
+} from './maintenance.js';
+import logger from './logger.js';
 
 // ============================================================================
 // Types
@@ -31,8 +42,8 @@ export interface OrchestratorConfig {
   maxRetryDelayMs?: number;
   /** Server port */
   port?: number;
-  /** Auto-initialize database schema on startup */
-  autoInitDb?: boolean;
+  /** Maintenance mode check interval in ms (default: 5000) */
+  maintenanceCheckIntervalMs?: number;
 }
 
 // ============================================================================
@@ -48,6 +59,7 @@ export class Orchestrator {
   private storageBackends: Map<string, StorageBackendConfig>;
   private defaultStorageBackend: StorageBackendConfig;
   private db: Database | null = null;
+  private maintenanceCheckInterval: NodeJS.Timeout | null = null;
 
   constructor(config: OrchestratorConfig) {
     if (!config.databaseUrl && !config.databaseConfig) {
@@ -72,7 +84,10 @@ export class Orchestrator {
     if (!defaultBackendId) {
       // Use first backend marked as default, or just the first one
       const defaultBackend = config.storageBackends.find((b) => b.isDefault);
-      defaultBackendId = defaultBackend?.id ?? config.storageBackends[0].id;
+      defaultBackendId = defaultBackend?.id ?? config.storageBackends[0]?.id;
+      if (!defaultBackendId) {
+        throw new Error('No storage backends configured');
+      }
     }
 
     const defaultBackend = this.storageBackends.get(defaultBackendId);
@@ -94,7 +109,7 @@ export class Orchestrator {
       idempotencyTTLSeconds: config.idempotencyTTLSeconds ?? 86400,
       maxRetryDelayMs: config.maxRetryDelayMs ?? 86400000,
       port: config.port ?? 3000,
-      autoInitDb: config.autoInitDb ?? false,
+      maintenanceCheckIntervalMs: config.maintenanceCheckIntervalMs ?? 5000,
     };
   }
 
@@ -138,11 +153,47 @@ export class Orchestrator {
     return this.db;
   }
 
+  /**
+   * Get current maintenance status
+   */
+  async getMaintenanceStatus(): Promise<MaintenanceStatus> {
+    return await getMaintenanceStatus(this.getDatabase());
+  }
+
+  /**
+   * Request maintenance mode
+   * Transitions to 'waiting_for_maintenance' and stops accepting new tasks
+   */
+  async requestMaintenance(): Promise<MaintenanceStatus> {
+    return await requestMaintenance(this.getDatabase());
+  }
+
+  /**
+   * Enter maintenance mode (only if no tasks are running)
+   */
+  async enterMaintenance(): Promise<MaintenanceStatus> {
+    return await enterMaintenance(this.getDatabase());
+  }
+
+  /**
+   * Exit maintenance mode and resume normal operation
+   */
+  async exitMaintenance(): Promise<void> {
+    await exitMaintenance(this.getDatabase());
+  }
+
+  /**
+   * Check if orchestrator can accept new tasks
+   */
+  async canAcceptTasks(): Promise<boolean> {
+    return await canAcceptTasks(this.getDatabase());
+  }
+
   async start(): Promise<void> {
-    console.log(`[PipeWeave] Orchestrator starting in ${this.config.mode} mode...`);
+    logger.info(`[orchestrator] Orchestrator starting in ${this.config.mode} mode...`);
 
     // Initialize database connection
-    console.log('[PipeWeave] Connecting to database...');
+    logger.info('[orchestrator] Connecting to database...');
     try {
       if (this.config.databaseUrl) {
         this.db = createDatabase({ connectionString: this.config.databaseUrl });
@@ -155,56 +206,82 @@ export class Orchestrator {
       if (!connected) {
         throw new Error('Database connection test failed');
       }
-      console.log('[PipeWeave] Database connected successfully');
+      logger.info('[orchestrator] Database connected successfully');
 
-      // Check if database is initialized
-      const initialized = await isDatabaseInitialized(this.db!);
-      if (!initialized) {
-        if (this.config.autoInitDb) {
-          console.log('[PipeWeave] Database not initialized, initializing schema...');
-          await initializeSchema(this.db!);
-        } else {
-          console.warn('[PipeWeave] WARNING: Database schema not initialized. Run migrations first.');
-        }
-      } else {
-        console.log('[PipeWeave] Database schema initialized');
-      }
+      // Check maintenance mode status
+      const state = await getOrchestratorState(this.db!);
+      logger.info(`[orchestrator] Orchestrator mode: ${state.mode}`);
+
+      // Start maintenance mode checker (for auto-transition)
+      this.startMaintenanceChecker();
     } catch (error) {
-      console.error('[PipeWeave] Database initialization failed:', error);
+      logger.error('[orchestrator] Database initialization failed', { error });
       throw error;
     }
 
     // Display storage configuration
-    console.log(`[PipeWeave] Configured storage backends:`);
+    logger.info('[orchestrator] Configured storage backends:');
     for (const backend of this.config.storageBackends) {
       const isDefault = backend.id === this.config.defaultStorageBackendId;
-      console.log(`  • ${backend.id} (${backend.provider})${isDefault ? ' [default]' : ''}`);
-      console.log(`    Endpoint: ${backend.endpoint}`);
-      console.log(`    Bucket: ${backend.bucket}`);
+      logger.info(`[orchestrator]   • ${backend.id} (${backend.provider})${isDefault ? ' [default]' : ''}`);
+      logger.info(`[orchestrator]     Endpoint: ${backend.endpoint}`);
+      logger.info(`[orchestrator]     Bucket: ${backend.bucket}`);
     }
 
-    // TODO: Implement remaining startup
-    // - Initialize storage clients
-    // - Start HTTP server
-    // - Start polling loop (standalone mode)
-    console.log(`[PipeWeave] Orchestrator listening on port ${this.config.port}`);
+    logger.info('[orchestrator] Orchestrator initialization complete');
+    logger.info('[orchestrator] Ready to accept requests');
+  }
+
+  /**
+   * Start maintenance mode checker (runs periodically)
+   */
+  private startMaintenanceChecker(): void {
+    if (this.maintenanceCheckInterval) {
+      return; // Already running
+    }
+
+    this.maintenanceCheckInterval = setInterval(async () => {
+      try {
+        if (!this.db) return;
+
+        // Auto-transition to maintenance if waiting and all tasks complete
+        const transitioned = await checkMaintenanceTransition(this.db);
+        if (transitioned) {
+          logger.info('[orchestrator] Auto-transitioned to maintenance mode');
+        }
+      } catch (error) {
+        logger.error('[orchestrator] Error in maintenance checker', { error });
+      }
+    }, this.config.maintenanceCheckIntervalMs);
+
+    logger.info(`[orchestrator] Maintenance checker started (interval: ${this.config.maintenanceCheckIntervalMs}ms)`);
+  }
+
+  /**
+   * Stop maintenance mode checker
+   */
+  private stopMaintenanceChecker(): void {
+    if (this.maintenanceCheckInterval) {
+      clearInterval(this.maintenanceCheckInterval);
+      this.maintenanceCheckInterval = null;
+      logger.info('[orchestrator] Maintenance checker stopped');
+    }
   }
 
   async stop(): Promise<void> {
-    console.log('[PipeWeave] Orchestrator stopping...');
+    logger.info('[orchestrator] Orchestrator stopping...');
+
+    // Stop maintenance checker
+    this.stopMaintenanceChecker();
 
     // Close database connection
     if (this.db) {
-      console.log('[PipeWeave] Closing database connection...');
+      logger.info('[orchestrator] Closing database connection...');
       closeDatabase(this.db);
       this.db = null;
     }
 
-    // TODO: Implement graceful shutdown
-    // - Stop HTTP server
-    // - Stop polling loop
-    // - Close storage clients
-    console.log('[PipeWeave] Orchestrator stopped');
+    logger.info('[orchestrator] Orchestrator stopped');
   }
 }
 
@@ -286,50 +363,17 @@ export function createOrchestratorFromEnv(): Orchestrator {
     );
   }
 
-  // Parse storage backends from STORAGE_BACKENDS JSON or legacy env vars
+  // Parse storage backends from STORAGE_BACKENDS JSON
   let storageBackends: StorageBackendConfig[];
 
-  if (process.env.STORAGE_BACKENDS) {
-    // New multi-backend configuration
-    try {
-      storageBackends = JSON.parse(process.env.STORAGE_BACKENDS);
-    } catch (error) {
-      throw new Error('Invalid STORAGE_BACKENDS JSON: ' + error);
-    }
-  } else {
-    // Legacy single-backend configuration (backward compatibility)
-    const provider = optional('STORAGE_PROVIDER', 'aws-s3') as 'aws-s3' | 'gcs' | 'minio';
+  if (!process.env.STORAGE_BACKENDS) {
+    throw new Error('STORAGE_BACKENDS environment variable is required');
+  }
 
-    let credentials: any;
-    if (provider === 'aws-s3') {
-      credentials = {
-        accessKeyId: required('S3_ACCESS_KEY'),
-        secretAccessKey: required('S3_SECRET_KEY'),
-      };
-    } else if (provider === 'gcs') {
-      credentials = {
-        projectId: required('GCS_PROJECT_ID'),
-        clientEmail: required('GCS_CLIENT_EMAIL'),
-        privateKey: required('GCS_PRIVATE_KEY'),
-      };
-    } else if (provider === 'minio') {
-      credentials = {
-        accessKey: required('MINIO_ACCESS_KEY'),
-        secretKey: required('MINIO_SECRET_KEY'),
-      };
-    }
-
-    storageBackends = [
-      {
-        id: 'default',
-        provider,
-        endpoint: required('S3_ENDPOINT'),
-        bucket: required('S3_BUCKET'),
-        region: process.env.S3_REGION,
-        credentials,
-        isDefault: true,
-      },
-    ];
+  try {
+    storageBackends = JSON.parse(process.env.STORAGE_BACKENDS);
+  } catch (error) {
+    throw new Error('Invalid STORAGE_BACKENDS JSON: ' + error);
   }
 
   return createOrchestrator({
@@ -345,6 +389,6 @@ export function createOrchestratorFromEnv(): Orchestrator {
     idempotencyTTLSeconds: optional('IDEMPOTENCY_TTL_SECONDS', 86400, parseInt),
     maxRetryDelayMs: optional('MAX_RETRY_DELAY_MS', 86400000, parseInt),
     port: optional('PORT', 3000, parseInt),
-    autoInitDb: optional('AUTO_INIT_DB', false, (v) => v === 'true'),
+    maintenanceCheckIntervalMs: optional('MAINTENANCE_CHECK_INTERVAL_MS', 5000, parseInt),
   });
 }

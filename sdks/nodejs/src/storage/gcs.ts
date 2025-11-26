@@ -1,25 +1,37 @@
-import { Storage } from '@google-cloud/storage';
-import { BaseStorageProvider, type IStorageProvider } from '@pipeweave/shared';
-import type { StorageBackendCredentials, GCSCredentials } from '@pipeweave/shared';
+import type { Storage } from "@google-cloud/storage";
+import type {
+  GCSCredentials,
+  StorageBackendCredentials,
+} from "@pipeweave/shared";
+import { BaseStorageProvider, type IStorageProvider } from "@pipeweave/shared";
 
 /**
  * Google Cloud Storage provider
  */
-export class GCSProvider extends BaseStorageProvider implements IStorageProvider {
+export class GCSProvider
+  extends BaseStorageProvider
+  implements IStorageProvider
+{
   private storage: Storage;
   private bucket: string;
 
   constructor(credentials: StorageBackendCredentials) {
     super(credentials);
 
-    if (credentials.provider !== 'gcs') {
-      throw new Error(`Invalid provider for GCSProvider: ${credentials.provider}`);
+    if (credentials.provider !== "gcs") {
+      throw new Error(
+        `Invalid provider for GCSProvider: ${credentials.provider}`
+      );
     }
 
     const gcsCredentials = credentials.credentials as GCSCredentials;
 
+    // Dynamically import @google-cloud/storage
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Storage: GCSStorage } = require("@google-cloud/storage");
+
     // Create storage client with service account credentials
-    this.storage = new Storage({
+    this.storage = new GCSStorage({
       projectId: gcsCredentials.projectId,
       credentials: {
         client_email: gcsCredentials.clientEmail,
@@ -31,7 +43,7 @@ export class GCSProvider extends BaseStorageProvider implements IStorageProvider
   }
 
   get provider() {
-    return 'gcs' as const;
+    return "gcs" as const;
   }
 
   async download(path: string): Promise<Buffer> {
@@ -44,7 +56,11 @@ export class GCSProvider extends BaseStorageProvider implements IStorageProvider
     }
   }
 
-  async upload(path: string, content: Buffer | string, contentType: string): Promise<void> {
+  async upload(
+    path: string,
+    content: Buffer | string,
+    contentType: string
+  ): Promise<void> {
     const buffer = this.toBuffer(content);
 
     try {

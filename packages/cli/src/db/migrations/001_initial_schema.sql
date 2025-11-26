@@ -1,6 +1,6 @@
--- ============================================================================
--- PipeWeave Database Schema
--- ============================================================================
+-- Migration: 001_initial_schema
+-- Description: Initial database schema for PipeWeave
+-- Created: 2024-01-01
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

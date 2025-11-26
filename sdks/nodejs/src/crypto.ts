@@ -27,6 +27,9 @@ export function decryptStorageToken(token: string, secretKey: string): StorageBa
   }
 
   const [ivB64, authTagB64, encryptedB64] = parts;
+  if (!ivB64 || !authTagB64 || !encryptedB64) {
+    throw new Error('Invalid storage token format');
+  }
   const iv = Buffer.from(ivB64, 'base64');
   const authTag = Buffer.from(authTagB64, 'base64');
   const encrypted = Buffer.from(encryptedB64, 'base64');
@@ -65,10 +68,11 @@ function deriveKey(secret: string): Buffer {
   // Simple key derivation - in production, consider using PBKDF2 or scrypt
   const hash = Buffer.alloc(32);
   const secretBuffer = Buffer.from(secret, 'utf-8');
-  
+
   for (let i = 0; i < 32; i++) {
-    hash[i] = secretBuffer[i % secretBuffer.length];
+    const byteIndex = i % secretBuffer.length;
+    hash[i] = secretBuffer[byteIndex] ?? 0;
   }
-  
+
   return hash;
 }

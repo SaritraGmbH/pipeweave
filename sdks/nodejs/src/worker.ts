@@ -31,7 +31,7 @@ export type TaskHandler<TInput = unknown, TOutput = unknown> = (
 interface RegisteredTask<TInput = unknown, TOutput = unknown> {
   id: string;
   options: Required<Omit<TaskOptions, 'idempotencyKey' | 'description'>> & {
-    idempotencyKey?: (input: TInput, codeVersion: number) => string;
+    idempotencyKey?: (input: unknown, codeVersion: number) => string;
     description?: string;
   };
   handler: TaskHandler<TInput, TOutput>;
@@ -92,7 +92,7 @@ export class Worker {
       concurrency: options.concurrency ?? 0,
       priority: options.priority ?? DEFAULTS.TASK_PRIORITY,
       idempotencyKey: options.idempotencyKey as
-        | ((input: TInput, codeVersion: number) => string)
+        | ((input: unknown, codeVersion: number) => string)
         | undefined,
       idempotencyTTL: options.idempotencyTTL ?? DEFAULTS.IDEMPOTENCY_TTL,
       description: options.description,
@@ -100,7 +100,7 @@ export class Worker {
 
     this.tasks.set(id, {
       id,
-      options: normalizedOptions,
+      options: normalizedOptions as RegisteredTask['options'],
       handler: handler as TaskHandler,
       codeHash,
     });
@@ -197,16 +197,19 @@ export class Worker {
         throw new Error(`Registration failed: ${response.status} ${response.statusText}`);
       }
 
-      const result = await response.json();
-      
-      if (result.codeChanges?.length > 0) {
+      const result = await response.json() as {
+        codeChanges?: Array<{ taskId: string; oldVersion: number; newVersion: number }>;
+        orphanedTasks?: string[];
+      };
+
+      if (result.codeChanges && result.codeChanges.length > 0) {
         console.log('[PipeWeave] Code changes detected:');
         for (const change of result.codeChanges) {
           console.log(`  • ${change.taskId}: v${change.oldVersion} → v${change.newVersion}`);
         }
       }
 
-      if (result.orphanedTasks?.length > 0) {
+      if (result.orphanedTasks && result.orphanedTasks.length > 0) {
         console.log('[PipeWeave] Orphaned tasks cancelled:', result.orphanedTasks.join(', '));
       }
 
@@ -231,7 +234,12 @@ export class Worker {
     const taskMatch = url.pathname.match(/^\/tasks\/([^/]+)$/);
     if (taskMatch && req.method === 'POST') {
       const taskId = taskMatch[1];
-      await this.handleTaskExecution(taskId, req, res);
+      if (taskId) {
+        await this.handleTaskExecution(taskId, req, res);
+      } else {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task ID required' }));
+      }
       return;
     }
 

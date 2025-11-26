@@ -110,7 +110,7 @@ pipeweave/
 
 - **Node.js >= 18** and **npm >= 9**
 - **PostgreSQL** (for orchestrator database)
-- **Storage Backend** (AWS S3, Google Cloud Storage, or MinIO)
+- **Storage Backend** (Local filesystem, AWS S3, Google Cloud Storage, or MinIO)
 
 ### Architecture Overview
 
@@ -224,7 +224,19 @@ createdb pipeweave
 
 Choose one of the following storage backends:
 
-**Option 1: MinIO (Recommended for development)**
+**Option 1: Local Filesystem (Simplest for development)**
+
+No external dependencies required — files are stored in a local directory:
+
+```bash
+# Set in .env or orchestrator config
+STORAGE_PROVIDER=local
+S3_ENDPOINT=file://
+S3_BUCKET=data
+LOCAL_STORAGE_BASE_PATH=./storage
+```
+
+**Option 2: MinIO (Self-hosted S3-compatible)**
 
 ```bash
 # Using Docker
@@ -242,11 +254,11 @@ mc alias set local http://localhost:9000 minioadmin minioadmin
 mc mb local/pipeweave
 ```
 
-**Option 2: AWS S3**
+**Option 3: AWS S3**
 
 Create an S3 bucket and IAM user with appropriate permissions.
 
-**Option 3: Google Cloud Storage**
+**Option 4: Google Cloud Storage**
 
 Create a GCS bucket and service account with Storage Admin role.
 
@@ -275,7 +287,7 @@ openssl rand -hex 32
 **Storage Configuration Examples:**
 
 ```bash
-# Multi-backend configuration (supports AWS S3, GCS, and MinIO simultaneously)
+# Multi-backend configuration (supports Local, AWS S3, GCS, and MinIO simultaneously)
 STORAGE_BACKENDS='[
   {
     "id": "primary-s3",
@@ -301,13 +313,6 @@ STORAGE_BACKENDS='[
   }
 ]'
 DEFAULT_STORAGE_BACKEND_ID=primary-s3
-
-# OR use legacy single-backend configuration (backward compatible)
-STORAGE_PROVIDER=minio  # or 'aws-s3' or 'gcs'
-S3_ENDPOINT=http://localhost:9000
-S3_BUCKET=pipeweave
-S3_ACCESS_KEY=minioadmin
-S3_SECRET_KEY=minioadmin
 ```
 
 #### 4. Initialize Database

@@ -31,6 +31,16 @@ const orchestrator = createOrchestrator({
   databaseUrl: process.env.DATABASE_URL,
   storageBackends: [
     {
+      id: "local-dev",
+      provider: "local",
+      endpoint: "file://",
+      bucket: "data",
+      credentials: {
+        basePath: "./storage",
+      },
+      isDefault: true,
+    },
+    {
       id: "primary-s3",
       provider: "aws-s3",
       endpoint: "https://s3.amazonaws.com",
@@ -40,7 +50,6 @@ const orchestrator = createOrchestrator({
         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
       },
-      isDefault: true,
     },
     {
       id: "gcs-backup",
@@ -81,11 +90,11 @@ const orchestrator = createOrchestrator({
   mode: "serverless",
 });
 
-// Expose process endpoint for Cloud Scheduler
-app.post("/api/process", (req, res) => {
-  orchestrator.processPending();
-  res.json({ status: "ok" });
-});
+await orchestrator.start();
+
+// The /api/tick endpoint is built-in and called by external schedulers
+// Example: Cloud Scheduler, cron job, etc. calls:
+// POST http://your-orchestrator/api/tick
 ```
 
 ## Environment Variables
@@ -93,7 +102,7 @@ app.post("/api/process", (req, res) => {
 | Variable                     | Required | Default      | Description                                   |
 | ---------------------------- | -------- | ------------ | --------------------------------------------- |
 | `DATABASE_URL`               | Yes      | —            | PostgreSQL connection string                  |
-| `STORAGE_BACKENDS`           | Yes\*    | —            | JSON array of storage backend configurations  |
+| `STORAGE_BACKENDS`           | Yes      | —            | JSON array of storage backend configurations  |
 | `DEFAULT_STORAGE_BACKEND_ID` | No       | —            | Default storage backend ID                    |
 | `PIPEWEAVE_SECRET_KEY`       | Yes      | —            | Shared JWT encryption key                     |
 | `MODE`                       | No       | `standalone` | Execution mode (`standalone` or `serverless`) |
@@ -103,54 +112,119 @@ app.post("/api/process", (req, res) => {
 | `IDEMPOTENCY_TTL_SECONDS`    | No       | `86400`      | Default idempotency cache TTL                 |
 | `MAX_RETRY_DELAY_MS`         | No       | `86400000`   | Default max retry delay (24h)                 |
 
+## Folder Structure
+
+```
+packages/orchestrator/src/
+├── index.ts                      # Public API exports
+├── orchestrator.ts               # Main Orchestrator class
+├── maintenance.ts                # Maintenance mode logic
+│
+├── bin/
+│   └── server.ts                 # CLI entrypoint for standalone server
+│
+├── db/
+│   └── index.ts                  # Database connection & client
+│
+├── routes/
+│   ├── index.ts                  # Route registration
+│   ├── health.ts                 # GET /health
+│   ├── services.ts               # Service registration & listing
+│   ├── pipelines.ts              # Pipeline management
+│   ├── queue.ts                  # Task queue operations + /api/tick
+│   ├── tasks.ts                  # Task execution (heartbeat, callback)
+│   ├── dlq.ts                    # Dead Letter Queue
+│   ├── storage.ts                # Storage proxy & backend listing
+│   └── runs.ts                   # Pipeline & task run queries
+│
+├── core/
+│   ├── registry.ts               # Service & task registry
+│   ├── queue-manager.ts          # Task queue & scheduling
+│   ├── executor.ts               # Task dispatcher
+│   ├── poller.ts                 # Polling loop (standalone mode)
+│   ├── heartbeat-monitor.ts      # Heartbeat tracking
+│   ├── retry-manager.ts          # Retry logic & backoff
+│   ├── idempotency.ts            # Idempotency key handling
+│   └── dlq-manager.ts            # Dead Letter Queue operations
+│
+├── pipeline/
+│   ├── validator.ts              # DAG validation & dry-run
+│   ├── graph.ts                  # Pipeline graph analysis
+│   └── executor.ts               # Pipeline execution logic
+│
+├── storage/
+│   ├── client.ts                 # Storage client wrapper
+│   └── jwt.ts                    # JWT encryption/decryption
+│
+└── types/
+    └── internal.ts               # Internal-only types
+```
+
 ## API Endpoints
 
 ### Health & Info
 
-- `GET /health` — Health check
+- `GET /health` — Health check + maintenance status
+- `GET /api/info` — Orchestrator info (version, mode, uptime)
+
+### Service Management
+
+- `POST /api/register` — Worker registration
 - `GET /api/services` — List registered services
+- `GET /api/services/:id` — Get service details
 - `GET /api/services/:id/tasks` — List tasks for a service
 
 ### Pipeline Management
 
 - `GET /api/pipelines` — List all pipelines
+- `GET /api/pipelines/:id` — Get pipeline details
 - `POST /api/pipelines/:id/trigger` — Trigger a pipeline
 - `POST /api/pipelines/:id/dry-run` — Validate pipeline without executing
-- `GET /api/runs` — List pipeline runs
-- `GET /api/runs/:id` — Get run details
 
 ### Task Queue
 
 - `POST /api/queue/task` — Queue a standalone task
 - `POST /api/queue/batch` — Queue multiple tasks
 - `GET /api/queue/status` — Get queue statistics
-- `GET /api/queue/items` — List queue items
+- `GET /api/queue/items` — List queue items (with filters)
+- `POST /api/tick` — **Process pending tasks (serverless mode trigger)**
 
 ### Task Execution
 
-- `GET /api/task-runs/:id` — Get task run details
 - `POST /api/heartbeat` — Worker heartbeat
 - `POST /api/progress` — Task progress update
 - `POST /api/callback/:runId` — Task completion callback
+- `GET /api/tasks/:id/history` — Task code change history
+
+### Run Queries
+
+- `GET /api/runs` — List pipeline runs (paginated, filtered)
+- `GET /api/runs/:id` — Get pipeline run details
+- `GET /api/task-runs/:id` — Get task run details
 
 ### Dead Letter Queue
 
-- `GET /api/dlq` — List failed tasks
-- `POST /api/dlq/:id/retry` — Retry a failed task
+- `GET /api/dlq` — List DLQ items (paginated, filtered)
+- `GET /api/dlq/:id` — Get DLQ item details
+- `POST /api/dlq/:id/retry` — Retry a DLQ item
+- `POST /api/dlq/purge` — Purge old entries
 
 ### Storage
 
-- `GET /api/storage/*` — Retrieve S3 content via orchestrator
-
-### Code History
-
-- `GET /api/tasks/:id/history` — View task code change history
+- `GET /api/storage/backends` — **List configured storage backends**
+- `GET /api/storage/*` — Retrieve S3 content via orchestrator proxy
 
 ## Architecture
 
 ### Multi-Storage Backend Support
 
-The orchestrator supports multiple storage backends (AWS S3, Google Cloud Storage, MinIO) simultaneously. Each backend is configured with provider-specific credentials and workers automatically use the appropriate SDK based on the provider type.
+The orchestrator supports multiple storage backends (Local filesystem, AWS S3, Google Cloud Storage, MinIO) simultaneously. Each backend is configured with provider-specific credentials and workers automatically use the appropriate SDK based on the provider type.
+
+**Supported Providers:**
+- **Local** — Local filesystem storage (ideal for development)
+- **AWS S3** — Amazon's object storage service
+- **Google Cloud Storage (GCS)** — Google's object storage
+- **MinIO** — Self-hosted S3-compatible storage
 
 ### Worker-Side Hydration
 
@@ -202,7 +276,7 @@ The orchestrator tracks task code changes via SHA-256 hashing:
 **Serverless Mode:**
 
 - No background polling
-- External scheduler (Cloud Scheduler, cron) triggers `/api/process`
+- External scheduler (Cloud Scheduler, cron) triggers `POST /api/tick`
 - Suitable for Cloud Run, Lambda, serverless platforms
 
 ## Database Schema
