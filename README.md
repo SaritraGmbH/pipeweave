@@ -1,3 +1,5 @@
+<div align="center">
+
 ```
 ╔════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
@@ -11,6 +13,8 @@
 ║              Task Orchestration & Pipeline Management                  ║
 ╚════════════════════════════════════════════════════════════════════════╝
 ```
+
+</div>
 
 **A lightweight, debuggable task orchestration framework for serverless architectures**
 
