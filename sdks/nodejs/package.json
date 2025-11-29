@@ -1,6 +1,6 @@
 {
   "name": "@pipeweave/sdk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "PipeWeave SDK for Node.js - Register tasks and define pipelines",
   "type": "module",
   "main": "./dist/index.js",
