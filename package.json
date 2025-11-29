@@ -1,7 +1,6 @@
 {
   "name": "pipeweave",
   "version": "0.1.0",
-  "private": true,
   "description": "A lightweight, debuggable task orchestration framework for serverless architectures",
   "keywords": [
     "workflow",
