@@ -52,7 +52,7 @@
     "url": "https://github.com/SaritraGmbH/pipeweave.git",
     "directory": "packages/orchestrator"
   },
-  "homepage": "https://github.com/SaritraGmbH/pipeweave#readme",
+  "homepage": "https://github.com/SaritraGmbH/pipeweave/tree/main/packages/orchestrator#readme",
   "publishConfig": {
     "access": "public"
   }

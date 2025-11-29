@@ -49,7 +49,7 @@
     "url": "https://github.com/SaritraGmbH/pipeweave.git",
     "directory": "sdks/nodejs"
   },
-  "homepage": "https://github.com/SaritraGmbH/pipeweave#readme",
+  "homepage": "https://github.com/SaritraGmbH/pipeweave/tree/main/sdks/nodejs#readme",
   "publishConfig": {
     "access": "public"
   },

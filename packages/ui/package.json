@@ -34,6 +34,12 @@
     "tailwindcss-animate": "^1.0.7",
     "zustand": "^5.0.2"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SaritraGmbH/pipeweave.git",
+    "directory": "packages/ui"
+  },
+  "homepage": "https://github.com/SaritraGmbH/pipeweave/tree/main/packages/ui#readme",
   "devDependencies": {
     "@types/node": "^22.10.1",
     "@types/react": "^19.0.1",

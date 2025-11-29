@@ -44,7 +44,7 @@
     "url": "https://github.com/SaritraGmbH/pipeweave.git",
     "directory": "packages/shared"
   },
-  "homepage": "https://github.com/SaritraGmbH/pipeweave#readme",
+  "homepage": "https://github.com/SaritraGmbH/pipeweave/tree/main/packages/shared#readme",
   "publishConfig": {
     "access": "public"
   }

@@ -50,7 +50,7 @@
     "url": "https://github.com/SaritraGmbH/pipeweave.git",
     "directory": "packages/cli"
   },
-  "homepage": "https://github.com/SaritraGmbH/pipeweave#readme",
+  "homepage": "https://github.com/SaritraGmbH/pipeweave/tree/main/packages/cli#readme",
   "publishConfig": {
     "access": "public"
   }
