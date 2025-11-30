@@ -9,7 +9,7 @@ export interface OrchestratorRequest extends Request {
   orchestrator: Orchestrator;
 }
 
-export type RouteHandler = (req: OrchestratorRequest, res: Response, next: NextFunction) => Promise<void> | void;
+export type RouteHandler = (req: OrchestratorRequest, res: Response, next?: NextFunction) => Promise<void | Response> | void | Response;
 
 // ============================================================================
 // Queue Items

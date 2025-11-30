@@ -156,7 +156,7 @@ Three states:
 - `GET /api/info` - Orchestrator info (version, mode, storage backends)
 
 ### Service Management
-- `POST /api/register` - Worker registration
+- `POST /api/services` - Worker registration
 - `GET /api/services` - List services
 - `GET /api/services/:id` - Service details
 - `GET /api/services/:id/tasks` - Tasks for service
@@ -175,10 +175,12 @@ Three states:
 - `POST /api/tick` - **Process pending tasks (serverless mode)**
 
 ### Task Execution
-- `POST /api/heartbeat` - Worker heartbeat
-- `POST /api/progress` - Task progress
-- `POST /api/callback/:runId` - Task completion
+- `POST /api/task-runs/:runId/heartbeat` - Worker heartbeat and progress update
+- `POST /api/task-runs/:runId/complete` - Task completion callback
+- `GET /api/task-runs/:id` - Get task run details
 - `GET /api/tasks/:id/history` - Code change history
+- `GET /api/tasks/:id/input-schema` - Get input schema
+- `POST /api/tasks/:id/validate-input` - Validate input
 
 ### Run Queries
 - `GET /api/runs` - List pipeline runs

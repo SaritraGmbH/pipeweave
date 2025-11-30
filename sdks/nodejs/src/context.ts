@@ -101,10 +101,10 @@ export function createTaskContext<TInput = unknown>(
 
     async progress(percent: number, message?: string): Promise<void> {
       try {
-        await fetch(`${orchestratorUrl}/api/progress`, {
+        await fetch(`${orchestratorUrl}/api/task-runs/${runId}/heartbeat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ runId, progress: percent, message }),
+          body: JSON.stringify({ progress: percent, message }),
         });
       } catch (error) {
         log.warn('Failed to report progress', { error: String(error) });

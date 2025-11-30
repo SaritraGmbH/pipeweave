@@ -184,7 +184,7 @@ export class Worker {
     }));
 
     try {
-      const response = await fetch(`${this.config.orchestratorUrl}/api/register`, {
+      const response = await fetch(`${this.config.orchestratorUrl}/api/services`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -382,15 +382,15 @@ export class Worker {
   }
 
   private async sendHeartbeat(runId: string, progress?: number, message?: string): Promise<void> {
-    await fetch(`${this.config.orchestratorUrl}/api/heartbeat`, {
+    await fetch(`${this.config.orchestratorUrl}/api/task-runs/${runId}/heartbeat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ runId, progress, message }),
+      body: JSON.stringify({ progress, message }),
     });
   }
 
   private async sendCallback(runId: string, payload: any): Promise<void> {
-    await fetch(`${this.config.orchestratorUrl}/api/callback/${runId}`, {
+    await fetch(`${this.config.orchestratorUrl}/api/task-runs/${runId}/complete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

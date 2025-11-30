@@ -1,14 +1,17 @@
 import type { Express } from 'express';
 import type { Orchestrator } from '../orchestrator.js';
-import { registerHealthRoutes } from './health.js';
-import { registerServiceRoutes } from './services.js';
-import { registerPipelineRoutes } from './pipelines.js';
-import { registerQueueRoutes } from './queue.js';
-import { registerTaskRoutes } from './tasks.js';
-import { registerRunRoutes } from './runs.js';
-import { registerDLQRoutes } from './dlq.js';
-import { registerStorageRoutes } from './storage.js';
-import { registerUploadRoutes } from './upload.js';
+import { attachOrchestrator } from './middleware/orchestrator.js';
+import { registerHealthRoutes } from './health/index.js';
+import { registerServiceRoutes } from './services/index.js';
+import { registerPipelineRoutes } from './pipelines/index.js';
+import { registerQueueRoutes } from './queue/index.js';
+import { registerTaskRoutes } from './tasks/index.js';
+import { registerTaskRunRoutes } from './task-runs/index.js';
+import { registerRunRoutes } from './runs/index.js';
+import { registerDLQRoutes } from './dlq/index.js';
+import { registerStorageRoutes } from './storage/index.js';
+import { registerUploadRoutes } from './upload/index.js';
+import { registerStatisticsRoutes } from './statistics/index.js';
 import logger from '../logger.js';
 
 // ============================================================================
@@ -17,10 +20,7 @@ import logger from '../logger.js';
 
 export function registerRoutes(app: Express, orchestrator: Orchestrator): void {
   // Attach orchestrator to all requests
-  app.use((req, _res, next) => {
-    (req as any).orchestrator = orchestrator;
-    next();
-  });
+  app.use(attachOrchestrator(orchestrator));
 
   // Register all route modules
   registerHealthRoutes(app);
@@ -28,10 +28,12 @@ export function registerRoutes(app: Express, orchestrator: Orchestrator): void {
   registerPipelineRoutes(app);
   registerQueueRoutes(app);
   registerTaskRoutes(app);
+  registerTaskRunRoutes(app);
   registerRunRoutes(app);
   registerDLQRoutes(app);
   registerStorageRoutes(app);
   registerUploadRoutes(app);
+  registerStatisticsRoutes(app);
 
   // 404 handler
   app.use((_req, res) => {

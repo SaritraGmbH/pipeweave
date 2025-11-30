@@ -201,7 +201,7 @@ packages/orchestrator/src/
 
 ### Service Management
 
-- `POST /api/register` — Worker registration
+- `POST /api/services` — Worker registration
 - `GET /api/services` — List registered services
 - `GET /api/services/:id` — Get service details
 - `GET /api/services/:id/tasks` — List tasks for a service
@@ -223,10 +223,12 @@ packages/orchestrator/src/
 
 ### Task Execution
 
-- `POST /api/heartbeat` — Worker heartbeat
-- `POST /api/progress` — Task progress update
-- `POST /api/callback/:runId` — Task completion callback
+- `POST /api/task-runs/:runId/heartbeat` — Worker heartbeat and progress update
+- `POST /api/task-runs/:runId/complete` — Task completion callback
+- `GET /api/task-runs/:id` — Get task run details
 - `GET /api/tasks/:id/history` — Task code change history
+- `GET /api/tasks/:id/input-schema` — Get input schema for a task
+- `POST /api/tasks/:id/validate-input` — Validate input against task schema
 
 ### Run Queries
 
@@ -245,6 +247,14 @@ packages/orchestrator/src/
 
 - `GET /api/storage/backends` — **List configured storage backends**
 - `GET /api/storage/*` — Retrieve S3 content via orchestrator proxy
+
+### Statistics
+
+- `GET /api/statistics/system` — **Get system-wide statistics**
+- `GET /api/statistics/services/:serviceId` — **Get service-level statistics**
+- `GET /api/statistics/tasks/:taskId` — **Get task-level statistics**
+- `GET /api/statistics/pipelines/:pipelineId` — **Get pipeline-level statistics**
+- `GET /api/statistics/queue` — **Get real-time queue statistics**
 
 ## Architecture
 
@@ -348,6 +358,103 @@ curl http://localhost:3000/api/queue/status
   "oldestPending": "2024-01-15T10:30:00Z"
 }
 ```
+
+### System Statistics
+
+Get comprehensive statistics with percentiles (p50, p95, p99) for runtime and wait times:
+
+```bash
+curl "http://localhost:3000/api/statistics/system?from=2024-01-15T00:00:00Z&to=2024-01-15T01:00:00Z&bucket=1m"
+```
+
+```json
+{
+  "buckets": [
+    {
+      "timestamp": "2024-01-15T00:00:00Z",
+      "taskRuns": {
+        "count": 150,
+        "byStatus": {
+          "completed": 145,
+          "failed": 3,
+          "timeout": 2,
+          "cancelled": 0,
+          "pending": 0,
+          "running": 0
+        },
+        "runtime": {
+          "count": 145,
+          "min": 120,
+          "max": 4500,
+          "avg": 1250,
+          "median": 1100,
+          "p50": 1100,
+          "p95": 3200,
+          "p99": 4200
+        },
+        "waitTime": {
+          "count": 145,
+          "min": 50,
+          "max": 2000,
+          "avg": 500,
+          "median": 450,
+          "p50": 450,
+          "p95": 1200,
+          "p99": 1800
+        },
+        "retries": {
+          "total": 5,
+          "successful": 3
+        }
+      },
+      "pipelineRuns": {
+        "count": 20,
+        "byStatus": {
+          "completed": 18,
+          "failed": 2,
+          "cancelled": 0,
+          "partial": 0
+        },
+        "runtime": {
+          "count": 18,
+          "min": 5000,
+          "max": 45000,
+          "avg": 15000,
+          "median": 12000,
+          "p50": 12000,
+          "p95": 35000,
+          "p99": 42000
+        }
+      },
+      "queue": {
+        "pending": 12,
+        "running": 5,
+        "waiting": 0
+      },
+      "errors": {
+        "total": 5,
+        "byCode": {
+          "TIMEOUT": 2,
+          "VALIDATION_ERROR": 3
+        }
+      },
+      "dlq": {
+        "added": 2,
+        "retried": 0
+      }
+    }
+  ],
+  "summary": {
+    "totalTaskRuns": 150,
+    "totalPipelineRuns": 20,
+    "avgSuccessRate": 0.967,
+    "avgRuntime": 1250,
+    "avgWaitTime": 500
+  }
+}
+```
+
+See [STATISTICS.md](./STATISTICS.md) for detailed documentation on the statistics system.
 
 ### Dead Letter Queue
 
