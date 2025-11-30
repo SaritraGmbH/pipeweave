@@ -1,5 +1,16 @@
 # @pipeweave/sdk
 
+## 1.1.0
+
+### Minor Changes
+
+- bfc1029: Added input schema to tasks and autmatic input ui
+
+### Patch Changes
+
+- Updated dependencies [bfc1029]
+  - @pipeweave/shared@1.1.0
+
 ## 1.0.1
 
 ### Patch Changes
