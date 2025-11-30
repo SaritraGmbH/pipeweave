@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024px" height="1024px" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>file-icon</title>
+    <defs>
+        <linearGradient x1="50%" y1="0%" x2="50%" y2="100%" id="linearGradient-1">
+            <stop stop-color="#FAFAFA" offset="0%"></stop>
+            <stop stop-color="#F5F5F5" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="file-icon" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <path d="M635.893398,7.5 L909.5,281.106602 L909.5,904 C909.5,935.066017 896.908009,963.191017 876.549513,983.549513 C856.191017,1003.90801 828.066017,1016.5 797,1016.5 L797,1016.5 L237,1016.5 C205.933983,1016.5 177.808983,1003.90801 157.450487,983.549513 C137.091991,963.191017 124.5,935.066017 124.5,904 L124.5,904 L124.5,120 C124.5,88.9339828 137.091991,60.8089828 157.450487,40.4504871 C177.808983,20.0919914 205.933983,7.5 237,7.5 L237,7.5 L635.893398,7.5 Z" id="Rectangle" stroke="#E5E5E5" stroke-width="15" fill="url(#linearGradient-1)"></path>
+        <path d="M631,8 L904.984375,286 L691,286 C657.862915,286 631,259.137085 631,226 L631,8 L631,8 Z" id="Triangle" fill="#E5E5E5"></path>
+        <rect id="Rectangle" fill="#D4D4D4" x="241" y="448" width="330" height="55" rx="20"></rect>
+        <rect id="Rectangle" fill="#D4D4D4" x="241" y="573" width="541" height="55" rx="20"></rect>
+        <rect id="Rectangle" fill="#D4D4D4" x="241" y="698" width="541" height="55" rx="20"></rect>
+    </g>
+</svg>
