@@ -1,5 +1,13 @@
 # orchestrator-setup-example
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [bfc1029]
+  - @pipeweave/orchestrator@1.1.0
+  - @pipeweave/shared@1.1.0
+
 ## 0.1.1
 
 ### Patch Changes
